@@ -373,7 +373,7 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
-  border-right: 1px solid var(--border);
+  border-right: 1px solid #94969B;
   position: sticky;
   left: 0;
   z-index: 3;
@@ -481,7 +481,7 @@ body {
   align-items: center;
   gap: 6px;
   padding: 0 6px 0 4px;
-  border-right: 1px solid var(--border);
+  border-right: 1px solid #94969B;
   position: sticky;
   left: 0;
   z-index: 2;
