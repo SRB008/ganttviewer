@@ -581,6 +581,16 @@ body {
   box-shadow: 0 4px 14px rgba(0,0,0,0.5);
 }
 
+.bar.milestone {
+  padding: 0;
+  border-radius: 3px;
+  transform: rotate(45deg) scale(0.8);
+}
+
+.bar.milestone .resize-handle {
+  display: none;
+}
+
 .bar.headline {
   background: transparent;
   box-shadow: none;
