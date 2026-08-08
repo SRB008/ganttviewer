@@ -524,9 +524,20 @@ body {
   outline: none;
 }
 
-.task-name.headline-text {
+.task-name:disabled {
+  opacity: 1;
+  color: var(--text);
+  cursor: default;
+}
+
+.task-name.headline {
   font-weight: 700;
   font-style: italic;
+}
+
+.view-only .phase-icon,
+.view-only .bar {
+  cursor: default;
 }
 
 .edit-btn {
