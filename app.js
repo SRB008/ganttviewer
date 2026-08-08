@@ -72,15 +72,6 @@
   const LAST_PROJECT_STORAGE_KEY = 'roadmap-gantt-last-project-id';
   const DEFAULT_EMPTY_STATE_MESSAGE = 'Connect to a project to get started.';
 
-  // A URL of the form "?v=<project id>" opens that one project straight away
-  // in a stripped-down, read-only view — see viewer.html. No editing action
-  // (drag, resize, rename, add/delete, import, tags, etc.) is wired up in
-  // this mode, and scheduleSave() below is a no-op, so nothing can be
-  // written back to Supabase from this mode.
-  const urlParams = new URLSearchParams(window.location.search);
-  const VIEW_ONLY = urlParams.has('v');
-  const VIEW_ONLY_PROJECT_ID = urlParams.get('v');
-
   const sprintHeaderEl = document.getElementById('sprint-header');
   const taskRowsEl = document.getElementById('task-rows');
   const addTaskBtn = document.getElementById('add-task-btn');
@@ -90,6 +81,11 @@
   const exportPngBtn = document.getElementById('export-png-btn');
   const exportPdfBtn = document.getElementById('export-pdf-btn');
   const exportCsvBtn = document.getElementById('export-csv-btn');
+  const exportLinkBtn = document.getElementById('export-link-btn');
+  const linkDialog = document.getElementById('link-dialog');
+  const linkOutput = document.getElementById('link-output');
+  const linkCopyBtn = document.getElementById('link-copy-btn');
+  const linkCloseBtn = document.getElementById('link-close-btn');
   const autosortBtn = document.getElementById('autosort-btn');
   const openFileBtn = document.getElementById('open-file-btn');
   const newFileBtn = document.getElementById('new-file-btn');
@@ -665,17 +661,15 @@
     tasks = parsed.tasks;
     tagOptions = parsed.tags;
     populateTagSelect();
-    setFileStatus(VIEW_ONLY ? currentProjectTitle : 'Connected: ' + currentProjectTitle, 'connected');
+    setFileStatus('Connected: ' + currentProjectTitle, 'connected');
     applyPageTitle(currentProjectTitle);
-    setPageTitleEditable(!VIEW_ONLY);
+    setPageTitleEditable(true);
     showGantt(true);
     render();
-    if (!VIEW_ONLY) {
-      try {
-        localStorage.setItem(LAST_PROJECT_STORAGE_KEY, currentProjectId);
-      } catch (err) {
-        // ignore — persistence is a convenience, not a requirement
-      }
+    try {
+      localStorage.setItem(LAST_PROJECT_STORAGE_KEY, currentProjectId);
+    } catch (err) {
+      // ignore — persistence is a convenience, not a requirement
     }
   }
 
@@ -684,7 +678,6 @@
       const row = await fetchProjectById(id);
       if (!row) {
         setFileStatus('Project not found', 'error');
-        if (VIEW_ONLY) emptyStateMessageEl.textContent = 'This chart could not be found — the link may be wrong, or the chart may have been removed.';
         return false;
       }
       applyProjectRow(row);
@@ -692,7 +685,6 @@
     } catch (err) {
       console.error(err);
       setFileStatus('Could not load project: ' + err.message, 'error');
-      if (VIEW_ONLY) emptyStateMessageEl.textContent = 'Could not load this chart: ' + err.message;
       return false;
     }
   }
@@ -1351,31 +1343,25 @@
       phaseIcon.src = PHASE_ICON_FILES[phase];
       phaseIcon.alt = PHASE_LABELS[phase] || phase;
       phaseIcon.title = `Status: ${PHASE_LABELS[phase] || phase}`;
-      if (!VIEW_ONLY) phaseIcon.addEventListener('click', () => openEditDialog(task));
+      phaseIcon.addEventListener('click', () => openEditDialog(task));
       label.appendChild(phaseIcon);
 
       const nameInput = document.createElement('input');
-      nameInput.className = 'task-name';
+      nameInput.className = phase === 'Headline' ? 'task-name headline-text' : 'task-name';
       nameInput.value = task.name;
-      if (VIEW_ONLY) {
-        nameInput.disabled = true;
-      } else {
-        nameInput.addEventListener('input', () => {
-          task.name = nameInput.value;
-          scheduleSave();
-        });
-      }
+      nameInput.addEventListener('input', () => {
+        task.name = nameInput.value;
+        scheduleSave();
+      });
       label.appendChild(nameInput);
 
-      if (!VIEW_ONLY) {
-        const editBtn = document.createElement('button');
-        editBtn.type = 'button';
-        editBtn.className = 'edit-btn';
-        editBtn.textContent = '✎';
-        editBtn.title = 'Edit name, start date, duration, color, tag, and progress';
-        editBtn.addEventListener('click', () => openEditDialog(task));
-        label.appendChild(editBtn);
-      }
+      const editBtn = document.createElement('button');
+      editBtn.type = 'button';
+      editBtn.className = 'edit-btn';
+      editBtn.textContent = '✎';
+      editBtn.title = 'Edit name, start date, duration, color, tag, and progress';
+      editBtn.addEventListener('click', () => openEditDialog(task));
+      label.appendChild(editBtn);
 
       row.appendChild(label);
 
@@ -1403,28 +1389,26 @@
         bar.appendChild(barLabel);
       }
 
-      if (!VIEW_ONLY) {
-        const leftHandle = document.createElement('div');
-        leftHandle.className = 'resize-handle left';
-        bar.appendChild(leftHandle);
+      const leftHandle = document.createElement('div');
+      leftHandle.className = 'resize-handle left';
+      bar.appendChild(leftHandle);
 
-        const rightHandle = document.createElement('div');
-        rightHandle.className = 'resize-handle right';
-        bar.appendChild(rightHandle);
-
-        leftHandle.addEventListener('mousedown', (e) => startResize(e, task, 'left', range));
-        rightHandle.addEventListener('mousedown', (e) => startResize(e, task, 'right', range));
-        bar.addEventListener('mousedown', (e) => {
-          if (e.target === leftHandle || e.target === rightHandle) return;
-          startMove(e, task, range);
-        });
-      }
+      const rightHandle = document.createElement('div');
+      rightHandle.className = 'resize-handle right';
+      bar.appendChild(rightHandle);
 
       track.appendChild(bar);
       row.appendChild(track);
       taskRowsEl.appendChild(row);
 
       rowRefs.set(task.id, { rowEl: row, barEl: bar });
+
+      leftHandle.addEventListener('mousedown', (e) => startResize(e, task, 'left', range));
+      rightHandle.addEventListener('mousedown', (e) => startResize(e, task, 'right', range));
+      bar.addEventListener('mousedown', (e) => {
+        if (e.target === leftHandle || e.target === rightHandle) return;
+        startMove(e, task, range);
+      });
     });
   }
 
@@ -1631,7 +1615,12 @@
       .sort((a, b) => {
         const startCmp = parseISODate(a.startDate) - parseISODate(b.startDate);
         if (startCmp !== 0) return startCmp;
-        const durCmp = a.durationDays - b.durationDays;
+        const aHeadline = a.phase === 'Headline' ? 0 : 1;
+        const bHeadline = b.phase === 'Headline' ? 0 : 1;
+        if (aHeadline !== bHeadline) return aHeadline - bHeadline;
+        const durCmp = aHeadline === 0
+          ? b.durationDays - a.durationDays
+          : a.durationDays - b.durationDays;
         if (durCmp !== 0) return durCmp;
         return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
       })
@@ -1926,6 +1915,13 @@
     URL.revokeObjectURL(url);
   }
 
+  function openLinkDialog() {
+    const id = String(currentProjectId == null ? '' : currentProjectId).replace(/\s+/g, '');
+    linkOutput.value = 'https://ganttviewer.stevebaird.co.uk/?v=' + id;
+    linkDialog.showModal();
+    linkOutput.select();
+  }
+
   function exportPng() {
     const canvas = drawGanttToCanvas();
     canvas.toBlob((blob) => {
@@ -1979,7 +1975,6 @@
 
   // ---------- Saving ----------
   function scheduleSave() {
-    if (VIEW_ONLY) return;
     if (!currentProjectId) return;
     if (saveTimer) clearTimeout(saveTimer);
     saveStatusEl.textContent = 'Saving...';
@@ -2047,6 +2042,12 @@
   exportPngBtn.addEventListener('click', () => { closeExportMenu(); exportPng(); });
   exportPdfBtn.addEventListener('click', () => { closeExportMenu(); exportPdf(); });
   exportCsvBtn.addEventListener('click', () => { closeExportMenu(); exportCsv(); });
+  exportLinkBtn.addEventListener('click', () => { closeExportMenu(); openLinkDialog(); });
+  linkCloseBtn.addEventListener('click', () => linkDialog.close());
+  linkCopyBtn.addEventListener('click', () => {
+    linkOutput.select();
+    navigator.clipboard?.writeText(linkOutput.value).catch(() => {});
+  });
   viewButtons.forEach((btn) => btn.addEventListener('click', () => setViewMode(btn.dataset.view)));
   syncViewButtons();
 
@@ -2113,31 +2114,11 @@
   });
   syncTimelineStartInput();
 
-  if (VIEW_ONLY) {
-    document.body.classList.add('view-only');
-    openFileBtn.hidden = true;
-    newFileBtn.hidden = true;
-    importBtn.hidden = true;
-    autosortBtn.hidden = true;
-    tagsBtn.hidden = true;
-    cleanupBtn.hidden = true;
-    removeProjectBtn.hidden = true;
-    addTaskBtn.hidden = true;
-    saveStatusEl.hidden = true;
-  }
-
   if (!supabaseClient) {
     unsupportedBanner.hidden = false;
     openFileBtn.disabled = true;
     newFileBtn.disabled = true;
     setFileStatus('Supabase client unavailable', 'error');
-  } else if (VIEW_ONLY) {
-    if (VIEW_ONLY_PROJECT_ID) {
-      loadProjectById(VIEW_ONLY_PROJECT_ID);
-    } else {
-      setFileStatus('No chart specified', 'error');
-      emptyStateMessageEl.textContent = 'This link is missing its chart id — expected ?v=<id> in the URL.';
-    }
   } else {
     tryRestoreLastProject();
   }
